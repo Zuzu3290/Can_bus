@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAN Bus Vehicle Network — Interactive Demo</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+
+  :root {
+    --bg: #020c18;
+    --grid: rgba(0,180,255,0.04);
+    --blue: #00b4ff;
+    --blue-dim: rgba(0,180,255,0.3);
+    --blue-glow: rgba(0,180,255,0.6);
+    --cyan: #00ffe7;
+    --warn: #ffb800;
+    --green: #00ff88;
+    --red: #ff3b5c;
+    --panel: rgba(0,20,45,0.85);
+    --border: rgba(0,180,255,0.25);
+    --text: #c8e8ff;
+    --mono: 'Share Tech Mono', monospace;
+    --head: 'Orbitron', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Grid background */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  header {
+    position: relative; z-index: 10;
+    padding: 18px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 18px;
+    background: rgba(0,10,28,0.9);
+  }
+  header h1 {
+    font-family: var(--head);
+    font-size: 1.1rem;
+    letter-spacing: 0.15em;
+    color: var(--blue);
+    text-shadow: 0 0 18px var(--blue-glow);
+  }
+  header .sub {
+    font-size: 0.7rem;
+    opacity: 0.5;
+    letter-spacing: 0.1em;
+  }
+  .badge {
+    margin-left: auto;
+    font-size: 0.65rem;
+    padding: 3px 10px;
+    border: 1px solid var(--blue-dim);
+    border-radius: 2px;
+    color: var(--blue);
+    letter-spacing: 0.1em;
+  }
+
+  .layout {
+    position: relative; z-index: 1;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    height: calc(100vh - 62px);
+  }
+
+  /* ── CAR CANVAS AREA ── */
+  .car-area {
+    grid-row: 1 / 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 10px;
+    border-right: 1px solid var(--border);
+    position: relative;
+  }
+
+  svg#car { width: 100%; max-width: 700px; }
+
+  /* ── NODE styles ── */
+  .ecu-node {
+    cursor: pointer;
+    transition: filter 0.2s;
+  }
+  .ecu-node:hover { filter: brightness(1.5) drop-shadow(0 0 8px var(--blue)); }
+  .ecu-node.active .node-ring { animation: pulse-ring 0.5s ease-out; }
+
+  @keyframes pulse-ring {
+    0%   { r: 10; opacity: 1; }
+    100% { r: 22; opacity: 0; }
+  }
+
+  /* ── BUS wire animation ── */
+  .bus-wire {
+    stroke: var(--blue-dim);
+    stroke-width: 2;
+    fill: none;
+    stroke-dasharray: 6 4;
+    animation: dash-flow 1.2s linear infinite;
+  }
+  .bus-wire.active-bus {
+    stroke: var(--blue);
+    stroke-width: 3;
+    filter: drop-shadow(0 0 6px var(--blue));
+    animation: dash-flow 0.3s linear infinite;
+  }
+
+  @keyframes dash-flow {
+    to { stroke-dashoffset: -20; }
+  }
+
+  .msg-packet {
+    transition: opacity 0.3s;
+  }
+
+  /* ── RIGHT PANEL ── */
+  .panel-top {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .panel-bot {
+    padding: 16px;
+    background: var(--panel);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .panel-title {
+    font-family: var(--head);
+    font-size: 0.65rem;
+    letter-spacing: 0.18em;
+    color: var(--blue);
+    margin-bottom: 10px;
+    opacity: 0.8;
+  }
+
+  /* ECU Buttons */
+  .ecu-btn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .ecu-btn {
+    background: rgba(0,40,80,0.6);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 0.65rem;
+    padding: 7px 8px;
+    cursor: pointer;
+    text-align: left;
+    letter-spacing: 0.05em;
+    transition: all 0.15s;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .ecu-btn:hover {
+    border-color: var(--blue);
+    background: rgba(0,100,180,0.3);
+    box-shadow: 0 0 12px var(--blue-dim);
+    color: #fff;
+  }
+  .ecu-btn.firing {
+    border-color: var(--cyan);
+    background: rgba(0,255,231,0.12);
+    color: var(--cyan);
+    box-shadow: 0 0 16px rgba(0,255,231,0.4);
+  }
+  .ecu-btn .btn-id {
+    font-size: 0.55rem;
+    opacity: 0.5;
+  }
+
+  /* Frame display */
+  .frame-box {
+    background: rgba(0,0,0,0.5);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 10px;
+  }
+  .frame-box .label {
+    font-size: 0.55rem;
+    letter-spacing: 0.12em;
+    opacity: 0.5;
+    margin-bottom: 4px;
+  }
+  .frame-hex {
+    font-size: 0.7rem;
+    color: var(--cyan);
+    word-break: break-all;
+    line-height: 1.7;
+  }
+  .frame-hex span { color: var(--warn); }
+  .frame-hex .id-part { color: var(--green); }
+  .frame-hex .data-part { color: var(--cyan); }
+  .frame-hex .dlc-part { color: var(--warn); }
+
+  /* Bus log */
+  .log-entry {
+    font-size: 0.62rem;
+    padding: 5px 8px;
+    border-left: 2px solid var(--blue-dim);
+    background: rgba(0,180,255,0.04);
+    line-height: 1.6;
+    animation: fade-in 0.3s ease;
+  }
+  .log-entry.tx { border-left-color: var(--green); }
+  .log-entry.rx { border-left-color: var(--cyan); }
+  .log-entry .ts { color: var(--warn); margin-right: 6px; }
+  .log-entry .dir { margin-right: 4px; }
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* status bar bottom of car area */
+  .status-bar {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 20px;
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    opacity: 0.7;
+  }
+  .status-item { display: flex; align-items: center; gap: 5px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .status-dot.warn { background: var(--warn); }
+  .status-dot.idle { background: var(--blue-dim); }
+
+  .scenario-btns {
+    display: flex; flex-direction: column; gap: 5px; margin-top: 8px;
+  }
+  .scenario-btn {
+    background: rgba(255,184,0,0.06);
+    border: 1px solid rgba(255,184,0,0.25);
+    color: var(--warn);
+    font-family: var(--mono);
+    font-size: 0.62rem;
+    padding: 6px 10px;
+    cursor: pointer;
+    border-radius: 2px;
+    letter-spacing: 0.06em;
+    transition: all 0.15s;
+    text-align: left;
+  }
+  .scenario-btn:hover {
+    background: rgba(255,184,0,0.15);
+    box-shadow: 0 0 10px rgba(255,184,0,0.25);
+  }
+
+  .separator { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+
+  /* tooltip */
+  #tooltip {
+    position: fixed;
+    background: rgba(0,10,30,0.95);
+    border: 1px solid var(--blue);
+    padding: 8px 12px;
+    font-size: 0.65rem;
+    line-height: 1.7;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 999;
+    max-width: 200px;
+    border-radius: 2px;
+    color: var(--text);
+  }
+  #tooltip.show { opacity: 1; }
+  #tooltip strong { color: var(--blue); font-family: var(--head); font-size: 0.6rem; }
+
+  .scroll-log { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>CAN BUS — VEHICLE NETWORK SIMULATOR</h1>
+    <div class="sub">ISO 11898 · 500 kbps · 11-BIT IDENTIFIER · INTERACTIVE DEMO</div>
+  </div>
+  <div class="badge">v1.0 · ECU NODES: 6</div>
+</header>
+
+<div class="layout">
+
+  <!-- ══ CAR SVG ══ -->
+  <div class="car-area">
+    <svg id="car" viewBox="0 0 700 420" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <filter id="glow-strong">
+          <feGaussianBlur stdDeviation="6" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <marker id="arrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+          <path d="M0,0 L6,3 L0,6 Z" fill="rgba(0,180,255,0.7)"/>
+        </marker>
+      </defs>
+
+      <!-- ══ SEDAN BLUEPRINT BODY ══ -->
+      <!-- Main body silhouette -->
+      <g stroke="#00b4ff" stroke-width="1.5" fill="none" opacity="0.85" filter="url(#glow)">
+        <!-- Chassis / underbody -->
+        <path d="M80,300 L80,280 L100,260 L600,260 L620,280 L620,300 L80,300 Z" stroke-width="1.2" opacity="0.5"/>
+        <!-- Wheels wells -->
+        <ellipse cx="175" cy="300" rx="52" ry="30" stroke-width="1.2" opacity="0.6"/>
+        <ellipse cx="525" cy="300" rx="52" ry="30" stroke-width="1.2" opacity="0.6"/>
+        <!-- Wheel rims -->
+        <circle cx="175" cy="300" r="20" stroke-width="1" opacity="0.4"/>
+        <circle cx="525" cy="300" r="20" stroke-width="1" opacity="0.4"/>
+        <!-- Outer body -->
+        <path d="M95,280 Q110,200 195,175 Q280,155 350,150 Q420,155 500,175 Q580,195 605,280 L605,300 L95,300 Z" stroke-width="2"/>
+        <!-- Roof & pillars -->
+        <path d="M220,175 Q225,135 260,128 L350,125 L440,128 Q468,135 475,175" stroke-width="1.5"/>
+        <!-- Windows -->
+        <path d="M228,172 Q232,140 262,133 L345,130 L438,133 Q462,140 465,172 Z" stroke-width="1" opacity="0.5" fill="rgba(0,180,255,0.04)"/>
+        <!-- Window divider -->
+        <line x1="350" y1="130" x2="350" y2="172" stroke-width="0.8" opacity="0.4"/>
+        <!-- Hood -->
+        <path d="M480,175 Q540,190 570,220 Q590,240 600,260" stroke-width="1.2" opacity="0.7"/>
+        <!-- Trunk -->
+        <path d="M220,175 Q175,185 145,215 Q120,240 105,260" stroke-width="1.2" opacity="0.7"/>
+        <!-- Headlights -->
+        <path d="M585,220 Q600,225 608,240 L600,245 Q592,235 582,230 Z" fill="rgba(0,180,255,0.08)" stroke-width="1"/>
+        <path d="M590,222 L605,240" stroke-width="0.8" opacity="0.5"/>
+        <!-- Taillights -->
+        <path d="M110,235 Q100,248 97,262 L108,264 Q110,252 118,240 Z" fill="rgba(255,59,92,0.1)" stroke="#ff3b5c" stroke-width="0.8" opacity="0.7"/>
+        <!-- Door lines -->
+        <line x1="340" y1="175" x2="340" y2="260" stroke-width="0.8" opacity="0.3"/>
+        <!-- Detail lines -->
+        <path d="M115,270 Q160,265 350,263 Q540,265 587,270" stroke-width="0.6" opacity="0.25"/>
+      </g>
+
+      <!-- ══ CAN BUS BACKBONE WIRE ══ -->
+      <!-- Main bus line running along body length (two lines = CAN-H / CAN-L) -->
+      <line id="bus-h" class="bus-wire" x1="120" y1="248" x2="590" y2="248"/>
+      <line id="bus-l" class="bus-wire" x1="120" y1="254" x2="590" y2="254"/>
+      <!-- Termination resistors -->
+      <rect x="108" y="244" width="10" height="12" fill="none" stroke="rgba(0,180,255,0.5)" stroke-width="1"/>
+      <text x="113" y="244" fill="rgba(0,180,255,0.4)" font-size="7" text-anchor="middle" font-family="Share Tech Mono">120Ω</text>
+      <rect x="583" y="244" width="10" height="12" fill="none" stroke="rgba(0,180,255,0.5)" stroke-width="1"/>
+      <text x="588" y="244" fill="rgba(0,180,255,0.4)" font-size="7" text-anchor="middle" font-family="Share Tech Mono">120Ω</text>
+
+      <!-- ══ ECU NODE STUBS ══ -->
+      <!-- Stubs connect nodes to bus -->
+      <line id="stub-ecu1" x1="165" y1="248" x2="165" y2="305" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <line id="stub-ecu2" x1="280" y1="248" x2="280" y2="195" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <line id="stub-ecu3" x1="350" y1="248" x2="350" y2="210" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <line id="stub-ecu4" x1="430" y1="248" x2="430" y2="195" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <line id="stub-ecu5" x1="530" y1="248" x2="530" y2="305" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
+      <line id="stub-ecu6" x1="350" y1="248" x2="350" y2="350" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
+
+      <!-- ══ ECU NODES ══ -->
+
+      <!-- ECU 1: ABS / Brake Module (front-left area) -->
+      <g class="ecu-node" id="node-ecu1" data-ecu="ecu1" transform="translate(165,315)">
+        <circle r="16" fill="rgba(0,20,45,0.9)" stroke="#00b4ff" stroke-width="1.5"/>
+        <circle class="node-ring" r="10" fill="none" stroke="rgba(0,180,255,0)" stroke-width="2"/>
+        <text y="-1" text-anchor="middle" fill="#00b4ff" font-size="7" font-family="Share Tech Mono">ABS</text>
+        <text y="8" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x18</text>
+      </g>
+
+      <!-- ECU 2: Engine Control Unit -->
+      <g class="ecu-node" id="node-ecu2" data-ecu="ecu2" transform="translate(280,182)">
+        <circle r="16" fill="rgba(0,20,45,0.9)" stroke="#00b4ff" stroke-width="1.5"/>
+        <circle class="node-ring" r="10" fill="none" stroke="rgba(0,180,255,0)" stroke-width="2"/>
+        <text y="-1" text-anchor="middle" fill="#00b4ff" font-size="7" font-family="Share Tech Mono">ECU</text>
+        <text y="8" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x28</text>
+      </g>
+
+      <!-- ECU 3: BCM (Body Control Module) — centre -->
+      <g class="ecu-node" id="node-ecu3" data-ecu="ecu3" transform="translate(350,198)">
+        <rect x="-18" y="-14" width="36" height="26" rx="3" fill="rgba(0,15,40,0.9)" stroke="#00ffe7" stroke-width="1.5"/>
+        <text y="-3" text-anchor="middle" fill="#00ffe7" font-size="7" font-family="Share Tech Mono">BCM</text>
+        <text y="7" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x35</text>
+      </g>
+
+      <!-- ECU 4: TCM (Transmission) -->
+      <g class="ecu-node" id="node-ecu4" data-ecu="ecu4" transform="translate(430,182)">
+        <circle r="16" fill="rgba(0,20,45,0.9)" stroke="#00b4ff" stroke-width="1.5"/>
+        <circle class="node-ring" r="10" fill="none" stroke="rgba(0,180,255,0)" stroke-width="2"/>
+        <text y="-1" text-anchor="middle" fill="#00b4ff" font-size="7" font-family="Share Tech Mono">TCM</text>
+        <text y="8" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x2A</text>
+      </g>
+
+      <!-- ECU 5: TPMS (Tyre Pressure) rear-right -->
+      <g class="ecu-node" id="node-ecu5" data-ecu="ecu5" transform="translate(530,315)">
+        <circle r="16" fill="rgba(0,20,45,0.9)" stroke="#00b4ff" stroke-width="1.5"/>
+        <circle class="node-ring" r="10" fill="none" stroke="rgba(0,180,255,0)" stroke-width="2"/>
+        <text y="-1" text-anchor="middle" fill="#00b4ff" font-size="7" font-family="Share Tech Mono">TPMS</text>
+        <text y="8" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x3F</text>
+      </g>
+
+      <!-- ECU 6: OBD-II Gateway (bottom centre) -->
+      <g class="ecu-node" id="node-ecu6" data-ecu="ecu6" transform="translate(350,365)">
+        <rect x="-22" y="-13" width="44" height="24" rx="3" fill="rgba(20,0,5,0.9)" stroke="#ff3b5c" stroke-width="1.5"/>
+        <text y="-2" text-anchor="middle" fill="#ff3b5c" font-size="7" font-family="Share Tech Mono">OBD-II</text>
+        <text y="7" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x7DF</text>
+      </g>
+
+      <!-- ══ MSG PACKET ANIMATION ══ -->
+      <circle id="msg-dot" r="5" fill="var(--cyan)" opacity="0" filter="url(#glow-strong)"/>
+
+      <!-- Legend -->
+      <g transform="translate(20, 20)" font-family="Share Tech Mono" font-size="8">
+        <line x1="0" y1="5" x2="20" y2="5" stroke="#00b4ff" stroke-width="2" stroke-dasharray="4,3"/>
+        <text x="24" y="8" fill="rgba(200,232,255,0.5)">CAN-H / CAN-L</text>
+        <rect x="0" y="17" width="20" height="10" fill="none" stroke="#00b4ff" stroke-width="1"/>
+        <text x="24" y="26" fill="rgba(200,232,255,0.5)">ECU Node</text>
+        <rect x="0" y="34" width="20" height="10" fill="none" stroke="#ff3b5c" stroke-width="1"/>
+        <text x="24" y="43" fill="rgba(200,232,255,0.5)">Gateway</text>
+      </g>
+
+    </svg>
+
+    <div class="status-bar">
+      <div class="status-item"><div class="status-dot" id="dot-bus"></div> BUS ACTIVE</div>
+      <div class="status-item"><div class="status-dot warn" id="dot-speed"></div> 500 kbps</div>
+      <div class="status-item"><div class="status-dot idle" id="dot-err"></div> ERR: 0</div>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT PANEL TOP: Controls ══ -->
+  <div class="panel-top">
+    <div class="panel-title">▸ ECU NODE TRIGGER</div>
+    <div class="ecu-btn-grid">
+      <button class="ecu-btn" onclick="sendMsg('ecu2','ecu3','ENGINE_RPM','0x28','[0x0F,0xA0,0x00]')">
+        <span>ENGINE RPM</span><span class="btn-id">ECU → BCM · 0x280</span>
+      </button>
+      <button class="ecu-btn" onclick="sendMsg('ecu4','ecu3','GEAR_STATUS','0x2A','[0x03,0x00]')">
+        <span>GEAR SHIFT</span><span class="btn-id">TCM → BCM · 0x2A0</span>
+      </button>
+      <button class="ecu-btn" onclick="sendMsg('ecu1','ecu3','ABS_ACTIVE','0x18','[0xFF,0x01]')">
+        <span>ABS TRIGGER</span><span class="btn-id">ABS → BCM · 0x180</span>
+      </button>
+      <button class="ecu-btn" onclick="sendMsg('ecu5','ecu3','TYRE_PSI','0x3F','[0x1C,0x1D,0x1C,0x1E]')">
+        <span>TYRE PRESSURE</span><span class="btn-id">TPMS → BCM · 0x3F0</span>
+      </button>
+      <button class="ecu-btn" onclick="sendMsg('ecu3','ecu2','FUEL_REQ','0x35','[0x02,0x41,0x0C]')">
+        <span>FUEL REQUEST</span><span class="btn-id">BCM → ECU · 0x350</span>
+      </button>
+      <button class="ecu-btn" onclick="sendMsg('ecu6','ecu2','OBD_QUERY','0x7DF','[0x02,0x01,0x0C,0x00]')">
+        <span>OBD QUERY</span><span class="btn-id">OBD → ECU · Broadcast</span>
+      </button>
+    </div>
+    <hr class="separator" style="margin-top:10px">
+    <div class="panel-title" style="margin-top:8px">▸ SCENARIO SEQUENCE</div>
+    <div class="scenario-btns">
+      <button class="scenario-btn" onclick="runScenario('startup')">⬡ Cold Engine Startup Sequence</button>
+      <button class="scenario-btn" onclick="runScenario('brake')">⬡ Emergency Braking / ABS Event</button>
+      <button class="scenario-btn" onclick="runScenario('obd')">⬡ OBD-II Diagnostic Scan</button>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT PANEL BOT: Frame + Log ══ -->
+  <div class="panel-bot">
+    <div class="panel-title">▸ CAN FRAME DECODER</div>
+    <div class="frame-box" id="frame-box">
+      <div class="label">LAST FRAME ON BUS</div>
+      <div class="frame-hex" id="frame-hex">— awaiting transmission —</div>
+    </div>
+
+    <div class="panel-title" style="margin-top:4px">▸ BUS LOG</div>
+    <div class="scroll-log" id="bus-log">
+      <div class="log-entry"><span class="ts">00:00.000</span>Bus initialized. Nodes online.</div>
+    </div>
+  </div>
+
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// ─── Node positions on SVG ───
+const nodes = {
+  ecu1: { x: 165, y: 315, busX: 165, name: 'ABS Module' },
+  ecu2: { x: 280, y: 182, busX: 280, name: 'Engine ECU' },
+  ecu3: { x: 350, y: 198, busX: 350, name: 'Body Control Module' },
+  ecu4: { x: 430, y: 182, busX: 430, name: 'Transmission (TCM)' },
+  ecu5: { x: 530, y: 315, busX: 530, name: 'TYRE Pressure (TPMS)' },
+  ecu6: { x: 350, y: 365, busX: 350, name: 'OBD-II Gateway' },
+};
+
+const busY = 251; // mid of H/L lines
+let msgTime = 0;
+let logCount = 0;
+
+function timestamp() {
+  msgTime += Math.floor(Math.random() * 40) + 10;
+  const ms = String(msgTime).padStart(6,'0');
+  return `${ms.slice(0,2)}:${ms.slice(2,4)}.${ms.slice(4)}`;
+}
+
+function updateFrameBox(id, data, from, to) {
+  const sof = '<span style="color:rgba(0,180,255,0.5)">0</span>';
+  const idH = `<span class="id-part">${id}</span>`;
+  const rtr = '<span style="opacity:0.4">0</span>';
+  const dlc = `<span class="dlc-part">${data.replace(/\[|\]/g,'').split(',').length}</span>`;
+  const dataH = `<span class="data-part">${data}</span>`;
+  const crc = `<span style="color:rgba(0,180,255,0.4)">0x${Math.floor(Math.random()*65535).toString(16).toUpperCase().padStart(4,'0')}</span>`;
+
+  document.getElementById('frame-hex').innerHTML =
+    `SOF: ${sof} &nbsp;|&nbsp; ID: ${idH} &nbsp;|&nbsp; RTR: ${rtr}<br>` +
+    `DLC: ${dlc} &nbsp;|&nbsp; DATA: ${dataH}<br>` +
+    `CRC: ${crc} &nbsp;|&nbsp; ACK: <span class="id-part">1</span> &nbsp;|&nbsp; EOF: <span style="opacity:0.4">1111111</span>`;
+}
+
+function addLog(dir, from, to, id, label) {
+  const log = document.getElementById('bus-log');
+  const ts = timestamp();
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${dir}`;
+  const dirLabel = dir === 'tx'
+    ? `<span class="dir" style="color:var(--green)">TX</span>`
+    : `<span class="dir" style="color:var(--cyan)">RX</span>`;
+  entry.innerHTML = `<span class="ts">${ts}</span>${dirLabel} [${id}] <span style="color:#fff">${label}</span> — ${nodes[from].name} → ${to === 'broadcast' ? 'ALL' : nodes[to].name}`;
+  log.prepend(entry);
+  // keep max 30 entries
+  while (log.children.length > 30) log.removeChild(log.lastChild);
+}
+
+// ─── Animate msg dot along bus ───
+function animateMsgOnBus(fromNode, toNode, onDone) {
+  const svg = document.getElementById('car');
+  const dot = document.getElementById('msg-dot');
+  const fn = nodes[fromNode];
+  const tn = toNode === 'broadcast' ? null : nodes[toNode];
+
+  // Flash stubs
+  flashStub(fromNode);
+  if (tn) setTimeout(() => flashStub(toNode), 260);
+
+  // Highlight bus wires
+  ['bus-h','bus-l'].forEach(id => {
+    const el = document.getElementById(id);
+    el.classList.add('active-bus');
+    setTimeout(() => el.classList.remove('active-bus'), 500);
+  });
+
+  // Start position: node stub meets bus
+  const startX = fn.busX;
+  const endX   = tn ? tn.busX : 590;
+  const duration = 400 + Math.abs(endX - startX) * 0.3;
+
+  dot.setAttribute('cx', startX);
+  dot.setAttribute('cy', busY);
+  dot.setAttribute('opacity', '1');
+
+  const start = performance.now();
+  function step(now) {
+    const t = Math.min((now - start) / duration, 1);
+    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
+    dot.setAttribute('cx', startX + (endX - startX) * ease);
+    if (t < 1) requestAnimationFrame(step);
+    else {
+      dot.setAttribute('opacity', '0');
+      if (onDone) onDone();
+    }
+  }
+  requestAnimationFrame(step);
+}
+
+function flashStub(ecuId) {
+  const stub = document.getElementById(`stub-${ecuId}`);
+  const node = document.getElementById(`node-${ecuId}`);
+  if (!stub) return;
+  stub.style.stroke = '#00ffe7';
+  stub.style.strokeWidth = '2.5';
+  if (node) node.classList.add('firing');
+  setTimeout(() => {
+    stub.style.stroke = '';
+    stub.style.strokeWidth = '';
+    if (node) node.classList.remove('firing');
+  }, 500);
+}
+
+function sendMsg(from, to, label, id, data, silent) {
+  // Visual button flash
+  const btns = document.querySelectorAll('.ecu-btn');
+  btns.forEach(b => {
+    if (b.textContent.includes(label.replace('_',' '))) b.classList.add('firing');
+    setTimeout(() => b.classList.remove('firing'), 500);
+  });
+
+  updateFrameBox(id, data, from, to);
+  if (!silent) addLog('tx', from, to, id, label);
+
+  animateMsgOnBus(from, to, () => {
+    if (!silent) addLog('rx', from, to, id, label);
+  });
+}
+
+// ─── Scenarios ───
+const scenarios = {
+  startup: [
+    [0,    'ecu2', 'ecu3', 'ECU_INIT',    '0x28', '[0x01,0x00]'],
+    [500,  'ecu4', 'ecu3', 'TCM_READY',   '0x2A', '[0x01]'],
+    [900,  'ecu1', 'ecu3', 'ABS_READY',   '0x18', '[0x01,0x00]'],
+    [1300, 'ecu5', 'ecu3', 'TPMS_OK',     '0x3F', '[0x1C,0x1C,0x1D,0x1C]'],
+    [1700, 'ecu3', 'ecu2', 'START_ENGINE','0x35', '[0x05,0x01]'],
+    [2200, 'ecu2', 'ecu3', 'RPM_IDLE',    '0x28', '[0x03,0x20,0x00]'],
+  ],
+  brake: [
+    [0,    'ecu1', 'ecu3', 'BRAKE_HARD',  '0x18', '[0xFF,0xFF]'],
+    [300,  'ecu1', 'ecu3', 'ABS_ACTIVE',  '0x18', '[0xFF,0x01]'],
+    [600,  'ecu4', 'ecu3', 'TCM_DOWNSHIFT','0x2A','[0x02,0x00]'],
+    [900,  'ecu2', 'ecu3', 'ENGINE_BRAKE','0x28', '[0x00,0x50]'],
+    [1400, 'ecu1', 'ecu3', 'ABS_RELEASE', '0x18', '[0x00,0x00]'],
+  ],
+  obd: [
+    [0,    'ecu6', 'ecu2', 'OBD_QUERY_RPM', '0x7DF', '[0x02,0x01,0x0C]'],
+    [400,  'ecu2', 'ecu6', 'OBD_RESP_RPM',  '0x7E8', '[0x04,0x41,0x0C,0x1A,0xF8]'],
+    [800,  'ecu6', 'ecu2', 'OBD_QUERY_SPEED','0x7DF','[0x02,0x01,0x0D]'],
+    [1200, 'ecu2', 'ecu6', 'OBD_RESP_SPEED','0x7E8', '[0x03,0x41,0x0D,0x60]'],
+    [1600, 'ecu6', 'ecu2', 'OBD_QUERY_TEMP','0x7DF','[0x02,0x01,0x05]'],
+    [2000, 'ecu2', 'ecu6', 'OBD_RESP_TEMP', '0x7E8', '[0x03,0x41,0x05,0x7B]'],
+  ],
+};
+
+function runScenario(name) {
+  const steps = scenarios[name];
+  steps.forEach(([delay, from, to, label, id, data]) => {
+    setTimeout(() => sendMsg(from, to, label, id, data), delay);
+  });
+}
+
+// ─── Node tooltips ───
+const tooltipData = {
+  ecu1: 'ABS MODULE\nID: 0x18\nMonitors wheel speed, activates anti-lock braking. Broadcasts on emergency.',
+  ecu2: 'ENGINE ECU\nID: 0x28\nControls fuel injection, ignition timing, RPM. Master node for powertrain.',
+  ecu3: 'BODY CTRL MODULE\nID: 0x35\nCentral gateway. Manages lighting, doors, climate, dashboard display.',
+  ecu4: 'TRANSMISSION (TCM)\nID: 0x2A\nControls automatic gear shifts. Coordinates with ECU for torque.',
+  ecu5: 'TYRE PRESSURE (TPMS)\nID: 0x3F\nMonitors PSI on all 4 wheels. Triggers BCM warning on low pressure.',
+  ecu6: 'OBD-II GATEWAY\nID: 0x7DF\nDiagnostic interface. Broadcasts query frames, receives 0x7E8 responses.',
+};
+
+const tip = document.getElementById('tooltip');
+document.querySelectorAll('.ecu-node').forEach(n => {
+  n.addEventListener('mouseenter', e => {
+    const id = n.getAttribute('data-ecu');
+    tip.innerHTML = tooltipData[id].replace(/\n/g,'<br>');
+    tip.classList.add('show');
+  });
+  n.addEventListener('mousemove', e => {
+    tip.style.left = (e.clientX + 14) + 'px';
+    tip.style.top  = (e.clientY - 10) + 'px';
+  });
+  n.addEventListener('mouseleave', () => tip.classList.remove('show'));
+  n.addEventListener('click', e => {
+    const id = n.getAttribute('data-ecu');
+    // clicking a node fires a heartbeat message to BCM
+    const dest = id === 'ecu3' ? 'ecu2' : 'ecu3';
+    sendMsg(id, dest, 'HEARTBEAT', '0x' + Math.floor(Math.random()*255).toString(16).toUpperCase(), '[0x01]');
+  });
+});
+
+// Autorun a slow heartbeat loop to show bus is alive
+let hbIdx = 0;
+const hbNodes = ['ecu2','ecu4','ecu1','ecu5'];
+setInterval(() => {
+  const n = hbNodes[hbIdx++ % hbNodes.length];
+  animateMsgOnBus(n, 'ecu3', null);
+}, 3000);
+</script>
+</body>
+</html>
