@@ -3,25 +3,26 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CAN Bus Vehicle Network — Interactive Demo</title>
+<title>Motherboard Control Bus Simulation</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700&display=swap');
 
   :root {
-    --bg: #020c18;
-    --grid: rgba(0,180,255,0.04);
-    --blue: #00b4ff;
-    --blue-dim: rgba(0,180,255,0.3);
-    --blue-glow: rgba(0,180,255,0.6);
-    --cyan: #00ffe7;
-    --warn: #ffb800;
-    --green: #00ff88;
-    --red: #ff3b5c;
-    --panel: rgba(0,20,45,0.85);
-    --border: rgba(0,180,255,0.25);
-    --text: #c8e8ff;
-    --mono: 'Share Tech Mono', monospace;
-    --head: 'Orbitron', sans-serif;
+    --bg: #0a0e14;
+    --panel: #0f1520;
+    --border: #1e2d40;
+    --accent: #00d4ff;
+    --accent2: #00ff88;
+    --accent3: #ff6b35;
+    --accent4: #ffd700;
+    --text: #c8e0f0;
+    --muted: #4a6a80;
+    --cpu-color: #00d4ff;
+    --ram-color: #00ff88;
+    --gpu-color: #ff6b35;
+    --io-color: #ffd700;
+    --storage-color: #c084fc;
+    --pcie-color: #fb7185;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,669 +30,969 @@
   body {
     background: var(--bg);
     color: var(--text);
-    font-family: var(--mono);
+    font-family: 'Share Tech Mono', monospace;
     min-height: 100vh;
     overflow-x: hidden;
   }
 
-  /* Grid background */
-  body::before {
-    content: '';
-    position: fixed; inset: 0;
-    background-image:
-      linear-gradient(var(--grid) 1px, transparent 1px),
-      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-    background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
+  .header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
   }
 
-  header {
-    position: relative; z-index: 10;
-    padding: 18px 32px;
-    border-bottom: 1px solid var(--border);
-    display: flex; align-items: center; gap: 18px;
-    background: rgba(0,10,28,0.9);
+  .header h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 3px;
+    text-transform: uppercase;
   }
-  header h1 {
-    font-family: var(--head);
-    font-size: 1.1rem;
-    letter-spacing: 0.15em;
-    color: var(--blue);
-    text-shadow: 0 0 18px var(--blue-glow);
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--accent2);
+    animation: pulse 1.5s ease-in-out infinite;
   }
-  header .sub {
-    font-size: 0.7rem;
-    opacity: 0.5;
-    letter-spacing: 0.1em;
-  }
-  .badge {
-    margin-left: auto;
-    font-size: 0.65rem;
-    padding: 3px 10px;
-    border: 1px solid var(--blue-dim);
-    border-radius: 2px;
-    color: var(--blue);
-    letter-spacing: 0.1em;
-  }
+
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
 
   .layout {
-    position: relative; z-index: 1;
     display: grid;
-    grid-template-columns: 1fr 320px;
-    grid-template-rows: auto 1fr;
+    grid-template-columns: 260px 1fr 260px;
+    grid-template-rows: 1fr auto;
+    height: calc(100vh - 49px);
     gap: 0;
-    height: calc(100vh - 62px);
   }
 
-  /* ── CAR CANVAS AREA ── */
-  .car-area {
-    grid-row: 1 / 3;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 20px 10px;
+  .sidebar {
+    background: var(--panel);
     border-right: 1px solid var(--border);
-    position: relative;
-  }
-
-  svg#car { width: 100%; max-width: 700px; }
-
-  /* ── NODE styles ── */
-  .ecu-node {
-    cursor: pointer;
-    transition: filter 0.2s;
-  }
-  .ecu-node:hover { filter: brightness(1.5) drop-shadow(0 0 8px var(--blue)); }
-  .ecu-node.active .node-ring { animation: pulse-ring 0.5s ease-out; }
-
-  @keyframes pulse-ring {
-    0%   { r: 10; opacity: 1; }
-    100% { r: 22; opacity: 0; }
-  }
-
-  /* ── BUS wire animation ── */
-  .bus-wire {
-    stroke: var(--blue-dim);
-    stroke-width: 2;
-    fill: none;
-    stroke-dasharray: 6 4;
-    animation: dash-flow 1.2s linear infinite;
-  }
-  .bus-wire.active-bus {
-    stroke: var(--blue);
-    stroke-width: 3;
-    filter: drop-shadow(0 0 6px var(--blue));
-    animation: dash-flow 0.3s linear infinite;
-  }
-
-  @keyframes dash-flow {
-    to { stroke-dashoffset: -20; }
-  }
-
-  .msg-packet {
-    transition: opacity 0.3s;
-  }
-
-  /* ── RIGHT PANEL ── */
-  .panel-top {
     padding: 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--panel);
-  }
-  .panel-bot {
-    padding: 16px;
-    background: var(--panel);
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+  }
+
+  .sidebar.right {
+    border-right: none;
+    border-left: 1px solid var(--border);
+  }
+
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  .component-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .component-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 3px 0 0 3px;
+  }
+
+  .component-card.cpu::before { background: var(--cpu-color); }
+  .component-card.ram::before { background: var(--ram-color); }
+  .component-card.gpu::before { background: var(--gpu-color); }
+  .component-card.io::before { background: var(--io-color); }
+  .component-card.storage::before { background: var(--storage-color); }
+
+  .component-card:hover, .component-card.active {
+    border-color: currentColor;
+    background: #0d1a26;
+  }
+
+  .component-card.cpu { color: var(--cpu-color); }
+  .component-card.ram { color: var(--ram-color); }
+  .component-card.gpu { color: var(--gpu-color); }
+  .component-card.io { color: var(--io-color); }
+  .component-card.storage { color: var(--storage-color); }
+
+  .comp-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  .comp-meta {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .comp-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .mini-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .comp-status span {
+    font-size: 10px;
+    opacity: .8;
+  }
+
+  .bar-wrap {
+    background: #1a2a3a;
+    border-radius: 2px;
+    height: 3px;
+    margin-top: 6px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: currentColor;
+    transition: width .5s ease;
+  }
+
+  /* Canvas area */
+  .canvas-area {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  canvas#mb {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+
+  /* Controls */
+  .controls-bar {
+    grid-column: 1 / -1;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-group {
+    display: flex;
+    align-items: center;
     gap: 10px;
   }
 
-  .panel-title {
-    font-family: var(--head);
-    font-size: 0.65rem;
-    letter-spacing: 0.18em;
-    color: var(--blue);
-    margin-bottom: 10px;
-    opacity: 0.8;
+  .ctrl-label {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-transform: uppercase;
+    white-space: nowrap;
   }
 
-  /* ECU Buttons */
-  .ecu-btn-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-  }
-  .ecu-btn {
-    background: rgba(0,40,80,0.6);
+  button {
+    background: transparent;
     border: 1px solid var(--border);
-    border-radius: 3px;
     color: var(--text);
-    font-family: var(--mono);
-    font-size: 0.65rem;
-    padding: 7px 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 6px 14px;
+    border-radius: 4px;
     cursor: pointer;
-    text-align: left;
-    letter-spacing: 0.05em;
-    transition: all 0.15s;
-    display: flex; flex-direction: column; gap: 2px;
-  }
-  .ecu-btn:hover {
-    border-color: var(--blue);
-    background: rgba(0,100,180,0.3);
-    box-shadow: 0 0 12px var(--blue-dim);
-    color: #fff;
-  }
-  .ecu-btn.firing {
-    border-color: var(--cyan);
-    background: rgba(0,255,231,0.12);
-    color: var(--cyan);
-    box-shadow: 0 0 16px rgba(0,255,231,0.4);
-  }
-  .ecu-btn .btn-id {
-    font-size: 0.55rem;
-    opacity: 0.5;
+    letter-spacing: 1px;
+    transition: border-color .2s, color .2s;
   }
 
-  /* Frame display */
-  .frame-box {
-    background: rgba(0,0,0,0.5);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    padding: 10px;
-  }
-  .frame-box .label {
-    font-size: 0.55rem;
-    letter-spacing: 0.12em;
-    opacity: 0.5;
-    margin-bottom: 4px;
-  }
-  .frame-hex {
-    font-size: 0.7rem;
-    color: var(--cyan);
-    word-break: break-all;
-    line-height: 1.7;
-  }
-  .frame-hex span { color: var(--warn); }
-  .frame-hex .id-part { color: var(--green); }
-  .frame-hex .data-part { color: var(--cyan); }
-  .frame-hex .dlc-part { color: var(--warn); }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  button.active-btn { border-color: var(--accent); color: var(--accent); background: #001a2a; }
 
-  /* Bus log */
+  input[type=range] {
+    -webkit-appearance: none;
+    width: 100px;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  /* Log panel */
+  .log-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
   .log-entry {
-    font-size: 0.62rem;
-    padding: 5px 8px;
-    border-left: 2px solid var(--blue-dim);
-    background: rgba(0,180,255,0.04);
-    line-height: 1.6;
-    animation: fade-in 0.3s ease;
-  }
-  .log-entry.tx { border-left-color: var(--green); }
-  .log-entry.rx { border-left-color: var(--cyan); }
-  .log-entry .ts { color: var(--warn); margin-right: 6px; }
-  .log-entry .dir { margin-right: 4px; }
-
-  @keyframes fade-in {
-    from { opacity: 0; transform: translateY(-4px); }
-    to   { opacity: 1; transform: translateY(0); }
+    font-size: 10px;
+    line-height: 1.5;
+    padding: 3px 6px;
+    border-radius: 3px;
+    background: #0d1520;
+    border-left: 2px solid var(--border);
   }
 
-  /* status bar bottom of car area */
-  .status-bar {
+  .log-entry.ctrl { border-color: var(--accent); }
+  .log-entry.data { border-color: var(--ram-color); }
+  .log-entry.addr { border-color: var(--io-color); }
+  .log-entry.irq  { border-color: var(--gpu-color); }
+
+  .log-time { color: var(--muted); margin-right: 6px; }
+  .log-type { font-weight: bold; margin-right: 6px; }
+
+  .signal-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid #111d28;
+  }
+
+  .signal-name { font-size: 10px; color: var(--muted); width: 70px; flex-shrink: 0; }
+  .signal-wave {
+    flex: 1;
+    height: 18px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  canvas.sig-canvas {
     position: absolute;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex; gap: 20px;
-    font-size: 0.6rem;
-    letter-spacing: 0.1em;
-    opacity: 0.7;
-  }
-  .status-item { display: flex; align-items: center; gap: 5px; }
-  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
-  .status-dot.warn { background: var(--warn); }
-  .status-dot.idle { background: var(--blue-dim); }
-
-  .scenario-btns {
-    display: flex; flex-direction: column; gap: 5px; margin-top: 8px;
-  }
-  .scenario-btn {
-    background: rgba(255,184,0,0.06);
-    border: 1px solid rgba(255,184,0,0.25);
-    color: var(--warn);
-    font-family: var(--mono);
-    font-size: 0.62rem;
-    padding: 6px 10px;
-    cursor: pointer;
-    border-radius: 2px;
-    letter-spacing: 0.06em;
-    transition: all 0.15s;
-    text-align: left;
-  }
-  .scenario-btn:hover {
-    background: rgba(255,184,0,0.15);
-    box-shadow: 0 0 10px rgba(255,184,0,0.25);
+    top: 0; left: 0;
+    width: 100%; height: 100%;
   }
 
-  .separator { border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+  .signal-val {
+    font-size: 10px;
+    width: 22px;
+    text-align: right;
+    flex-shrink: 0;
+  }
 
-  /* tooltip */
-  #tooltip {
-    position: fixed;
-    background: rgba(0,10,30,0.95);
-    border: 1px solid var(--blue);
-    padding: 8px 12px;
-    font-size: 0.65rem;
-    line-height: 1.7;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s;
-    z-index: 999;
-    max-width: 200px;
-    border-radius: 2px;
+  select {
+    background: var(--bg);
+    border: 1px solid var(--border);
     color: var(--text);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    outline: none;
+    cursor: pointer;
   }
-  #tooltip.show { opacity: 1; }
-  #tooltip strong { color: var(--blue); font-family: var(--head); font-size: 0.6rem; }
-
-  .scroll-log { max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
 </style>
 </head>
 <body>
 
-<header>
-  <div>
-    <h1>CAN BUS — VEHICLE NETWORK SIMULATOR</h1>
-    <div class="sub">ISO 11898 · 500 kbps · 11-BIT IDENTIFIER · INTERACTIVE DEMO</div>
-  </div>
-  <div class="badge">v1.0 · ECU NODES: 6</div>
-</header>
+<div class="header">
+  <div class="status-dot"></div>
+  <h1>Motherboard Control Bus Simulator</h1>
+  <div style="margin-left:auto;font-size:10px;color:var(--muted)" id="clock-display">CLK: 3.6 GHz | BUS: 400 MT/s</div>
+</div>
 
 <div class="layout">
 
-  <!-- ══ CAR SVG ══ -->
-  <div class="car-area">
-    <svg id="car" viewBox="0 0 700 420" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="3" result="blur"/>
-          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
-        <filter id="glow-strong">
-          <feGaussianBlur stdDeviation="6" result="blur"/>
-          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
-        <marker id="arrow" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-          <path d="M0,0 L6,3 L0,6 Z" fill="rgba(0,180,255,0.7)"/>
-        </marker>
-      </defs>
+  <!-- Left sidebar: Components -->
+  <div class="sidebar">
+    <div class="section-label">System Components</div>
 
-      <!-- ══ SEDAN BLUEPRINT BODY ══ -->
-      <!-- Main body silhouette -->
-      <g stroke="#00b4ff" stroke-width="1.5" fill="none" opacity="0.85" filter="url(#glow)">
-        <!-- Chassis / underbody -->
-        <path d="M80,300 L80,280 L100,260 L600,260 L620,280 L620,300 L80,300 Z" stroke-width="1.2" opacity="0.5"/>
-        <!-- Wheels wells -->
-        <ellipse cx="175" cy="300" rx="52" ry="30" stroke-width="1.2" opacity="0.6"/>
-        <ellipse cx="525" cy="300" rx="52" ry="30" stroke-width="1.2" opacity="0.6"/>
-        <!-- Wheel rims -->
-        <circle cx="175" cy="300" r="20" stroke-width="1" opacity="0.4"/>
-        <circle cx="525" cy="300" r="20" stroke-width="1" opacity="0.4"/>
-        <!-- Outer body -->
-        <path d="M95,280 Q110,200 195,175 Q280,155 350,150 Q420,155 500,175 Q580,195 605,280 L605,300 L95,300 Z" stroke-width="2"/>
-        <!-- Roof & pillars -->
-        <path d="M220,175 Q225,135 260,128 L350,125 L440,128 Q468,135 475,175" stroke-width="1.5"/>
-        <!-- Windows -->
-        <path d="M228,172 Q232,140 262,133 L345,130 L438,133 Q462,140 465,172 Z" stroke-width="1" opacity="0.5" fill="rgba(0,180,255,0.04)"/>
-        <!-- Window divider -->
-        <line x1="350" y1="130" x2="350" y2="172" stroke-width="0.8" opacity="0.4"/>
-        <!-- Hood -->
-        <path d="M480,175 Q540,190 570,220 Q590,240 600,260" stroke-width="1.2" opacity="0.7"/>
-        <!-- Trunk -->
-        <path d="M220,175 Q175,185 145,215 Q120,240 105,260" stroke-width="1.2" opacity="0.7"/>
-        <!-- Headlights -->
-        <path d="M585,220 Q600,225 608,240 L600,245 Q592,235 582,230 Z" fill="rgba(0,180,255,0.08)" stroke-width="1"/>
-        <path d="M590,222 L605,240" stroke-width="0.8" opacity="0.5"/>
-        <!-- Taillights -->
-        <path d="M110,235 Q100,248 97,262 L108,264 Q110,252 118,240 Z" fill="rgba(255,59,92,0.1)" stroke="#ff3b5c" stroke-width="0.8" opacity="0.7"/>
-        <!-- Door lines -->
-        <line x1="340" y1="175" x2="340" y2="260" stroke-width="0.8" opacity="0.3"/>
-        <!-- Detail lines -->
-        <path d="M115,270 Q160,265 350,263 Q540,265 587,270" stroke-width="0.6" opacity="0.25"/>
-      </g>
+    <div class="component-card cpu active" id="card-cpu" onclick="selectComponent('cpu')">
+      <div class="comp-name">CPU — Intel i9-14900K</div>
+      <div class="comp-meta">24 cores / 32 threads<br>3.2–6.0 GHz · TDP 125W</div>
+      <div class="comp-status"><div class="mini-dot"></div><span id="cpu-status">RUNNING</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="cpu-bar" style="width:72%"></div></div>
+    </div>
 
-      <!-- ══ CAN BUS BACKBONE WIRE ══ -->
-      <!-- Main bus line running along body length (two lines = CAN-H / CAN-L) -->
-      <line id="bus-h" class="bus-wire" x1="120" y1="248" x2="590" y2="248"/>
-      <line id="bus-l" class="bus-wire" x1="120" y1="254" x2="590" y2="254"/>
-      <!-- Termination resistors -->
-      <rect x="108" y="244" width="10" height="12" fill="none" stroke="rgba(0,180,255,0.5)" stroke-width="1"/>
-      <text x="113" y="244" fill="rgba(0,180,255,0.4)" font-size="7" text-anchor="middle" font-family="Share Tech Mono">120Ω</text>
-      <rect x="583" y="244" width="10" height="12" fill="none" stroke="rgba(0,180,255,0.5)" stroke-width="1"/>
-      <text x="588" y="244" fill="rgba(0,180,255,0.4)" font-size="7" text-anchor="middle" font-family="Share Tech Mono">120Ω</text>
+    <div class="component-card ram" id="card-ram" onclick="selectComponent('ram')">
+      <div class="comp-name">RAM — DDR5-6400</div>
+      <div class="comp-meta">64 GB · 4 DIMMs<br>6400 MT/s · CL32</div>
+      <div class="comp-status"><div class="mini-dot"></div><span id="ram-status">ACTIVE</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="ram-bar" style="width:45%"></div></div>
+    </div>
 
-      <!-- ══ ECU NODE STUBS ══ -->
-      <!-- Stubs connect nodes to bus -->
-      <line id="stub-ecu1" x1="165" y1="248" x2="165" y2="305" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
-      <line id="stub-ecu2" x1="280" y1="248" x2="280" y2="195" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
-      <line id="stub-ecu3" x1="350" y1="248" x2="350" y2="210" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
-      <line id="stub-ecu4" x1="430" y1="248" x2="430" y2="195" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
-      <line id="stub-ecu5" x1="530" y1="248" x2="530" y2="305" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
-      <line id="stub-ecu6" x1="350" y1="248" x2="350" y2="350" stroke="rgba(0,180,255,0.3)" stroke-width="1.5" stroke-dasharray="3,3"/>
+    <div class="component-card gpu" id="card-gpu" onclick="selectComponent('gpu')">
+      <div class="comp-name">GPU — RTX 4090</div>
+      <div class="comp-meta">16384 CUDA Cores<br>PCIe 5.0 x16 · 450W TDP</div>
+      <div class="comp-status"><div class="mini-dot"></div><span id="gpu-status">IDLE</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="gpu-bar" style="width:12%"></div></div>
+    </div>
 
-      <!-- ══ ECU NODES ══ -->
+    <div class="component-card storage" id="card-storage" onclick="selectComponent('storage')">
+      <div class="comp-name">NVMe SSD — Samsung 990</div>
+      <div class="comp-meta">2 TB · PCIe 4.0 x4<br>7450 / 6900 MB/s R/W</div>
+      <div class="comp-status"><div class="mini-dot"></div><span id="storage-status">STANDBY</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="storage-bar" style="width:8%"></div></div>
+    </div>
 
-      <!-- ECU 1: ABS / Brake Module (front-left area) -->
-      <g class="ecu-node" id="node-ecu1" data-ecu="ecu1" transform="translate(165,315)">
-        <circle r="16" fill="rgba(0,20,45,0.9)" stroke="#00b4ff" stroke-width="1.5"/>
-        <circle class="node-ring" r="10" fill="none" stroke="rgba(0,180,255,0)" stroke-width="2"/>
-        <text y="-1" text-anchor="middle" fill="#00b4ff" font-size="7" font-family="Share Tech Mono">ABS</text>
-        <text y="8" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x18</text>
-      </g>
+    <div class="component-card io" id="card-io" onclick="selectComponent('io')">
+      <div class="comp-name">PCH — Intel Z790</div>
+      <div class="comp-meta">USB 3.2 / Thunderbolt 4<br>SATA · Audio · DMI 4.0</div>
+      <div class="comp-status"><div class="mini-dot"></div><span id="io-status">ACTIVE</span></div>
+      <div class="bar-wrap"><div class="bar-fill" id="io-bar" style="width:30%"></div></div>
+    </div>
 
-      <!-- ECU 2: Engine Control Unit -->
-      <g class="ecu-node" id="node-ecu2" data-ecu="ecu2" transform="translate(280,182)">
-        <circle r="16" fill="rgba(0,20,45,0.9)" stroke="#00b4ff" stroke-width="1.5"/>
-        <circle class="node-ring" r="10" fill="none" stroke="rgba(0,180,255,0)" stroke-width="2"/>
-        <text y="-1" text-anchor="middle" fill="#00b4ff" font-size="7" font-family="Share Tech Mono">ECU</text>
-        <text y="8" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x28</text>
-      </g>
+    <div class="section-label" style="margin-top:8px">Bus Operations</div>
 
-      <!-- ECU 3: BCM (Body Control Module) — centre -->
-      <g class="ecu-node" id="node-ecu3" data-ecu="ecu3" transform="translate(350,198)">
-        <rect x="-18" y="-14" width="36" height="26" rx="3" fill="rgba(0,15,40,0.9)" stroke="#00ffe7" stroke-width="1.5"/>
-        <text y="-3" text-anchor="middle" fill="#00ffe7" font-size="7" font-family="Share Tech Mono">BCM</text>
-        <text y="7" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x35</text>
-      </g>
-
-      <!-- ECU 4: TCM (Transmission) -->
-      <g class="ecu-node" id="node-ecu4" data-ecu="ecu4" transform="translate(430,182)">
-        <circle r="16" fill="rgba(0,20,45,0.9)" stroke="#00b4ff" stroke-width="1.5"/>
-        <circle class="node-ring" r="10" fill="none" stroke="rgba(0,180,255,0)" stroke-width="2"/>
-        <text y="-1" text-anchor="middle" fill="#00b4ff" font-size="7" font-family="Share Tech Mono">TCM</text>
-        <text y="8" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x2A</text>
-      </g>
-
-      <!-- ECU 5: TPMS (Tyre Pressure) rear-right -->
-      <g class="ecu-node" id="node-ecu5" data-ecu="ecu5" transform="translate(530,315)">
-        <circle r="16" fill="rgba(0,20,45,0.9)" stroke="#00b4ff" stroke-width="1.5"/>
-        <circle class="node-ring" r="10" fill="none" stroke="rgba(0,180,255,0)" stroke-width="2"/>
-        <text y="-1" text-anchor="middle" fill="#00b4ff" font-size="7" font-family="Share Tech Mono">TPMS</text>
-        <text y="8" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x3F</text>
-      </g>
-
-      <!-- ECU 6: OBD-II Gateway (bottom centre) -->
-      <g class="ecu-node" id="node-ecu6" data-ecu="ecu6" transform="translate(350,365)">
-        <rect x="-22" y="-13" width="44" height="24" rx="3" fill="rgba(20,0,5,0.9)" stroke="#ff3b5c" stroke-width="1.5"/>
-        <text y="-2" text-anchor="middle" fill="#ff3b5c" font-size="7" font-family="Share Tech Mono">OBD-II</text>
-        <text y="7" text-anchor="middle" fill="rgba(200,232,255,0.5)" font-size="5.5" font-family="Share Tech Mono">0x7DF</text>
-      </g>
-
-      <!-- ══ MSG PACKET ANIMATION ══ -->
-      <circle id="msg-dot" r="5" fill="var(--cyan)" opacity="0" filter="url(#glow-strong)"/>
-
-      <!-- Legend -->
-      <g transform="translate(20, 20)" font-family="Share Tech Mono" font-size="8">
-        <line x1="0" y1="5" x2="20" y2="5" stroke="#00b4ff" stroke-width="2" stroke-dasharray="4,3"/>
-        <text x="24" y="8" fill="rgba(200,232,255,0.5)">CAN-H / CAN-L</text>
-        <rect x="0" y="17" width="20" height="10" fill="none" stroke="#00b4ff" stroke-width="1"/>
-        <text x="24" y="26" fill="rgba(200,232,255,0.5)">ECU Node</text>
-        <rect x="0" y="34" width="20" height="10" fill="none" stroke="#ff3b5c" stroke-width="1"/>
-        <text x="24" y="43" fill="rgba(200,232,255,0.5)">Gateway</text>
-      </g>
-
-    </svg>
-
-    <div class="status-bar">
-      <div class="status-item"><div class="status-dot" id="dot-bus"></div> BUS ACTIVE</div>
-      <div class="status-item"><div class="status-dot warn" id="dot-speed"></div> 500 kbps</div>
-      <div class="status-item"><div class="status-dot idle" id="dot-err"></div> ERR: 0</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <button onclick="triggerOp('read')">▶ MEM READ</button>
+      <button onclick="triggerOp('write')">▶ MEM WRITE</button>
+      <button onclick="triggerOp('dma')">▶ DMA TRANSFER</button>
+      <button onclick="triggerOp('irq')">▶ IRQ ASSERT</button>
+      <button onclick="triggerOp('pcie')">▶ PCIe BURST</button>
     </div>
   </div>
 
-  <!-- ══ RIGHT PANEL TOP: Controls ══ -->
-  <div class="panel-top">
-    <div class="panel-title">▸ ECU NODE TRIGGER</div>
-    <div class="ecu-btn-grid">
-      <button class="ecu-btn" onclick="sendMsg('ecu2','ecu3','ENGINE_RPM','0x28','[0x0F,0xA0,0x00]')">
-        <span>ENGINE RPM</span><span class="btn-id">ECU → BCM · 0x280</span>
-      </button>
-      <button class="ecu-btn" onclick="sendMsg('ecu4','ecu3','GEAR_STATUS','0x2A','[0x03,0x00]')">
-        <span>GEAR SHIFT</span><span class="btn-id">TCM → BCM · 0x2A0</span>
-      </button>
-      <button class="ecu-btn" onclick="sendMsg('ecu1','ecu3','ABS_ACTIVE','0x18','[0xFF,0x01]')">
-        <span>ABS TRIGGER</span><span class="btn-id">ABS → BCM · 0x180</span>
-      </button>
-      <button class="ecu-btn" onclick="sendMsg('ecu5','ecu3','TYRE_PSI','0x3F','[0x1C,0x1D,0x1C,0x1E]')">
-        <span>TYRE PRESSURE</span><span class="btn-id">TPMS → BCM · 0x3F0</span>
-      </button>
-      <button class="ecu-btn" onclick="sendMsg('ecu3','ecu2','FUEL_REQ','0x35','[0x02,0x41,0x0C]')">
-        <span>FUEL REQUEST</span><span class="btn-id">BCM → ECU · 0x350</span>
-      </button>
-      <button class="ecu-btn" onclick="sendMsg('ecu6','ecu2','OBD_QUERY','0x7DF','[0x02,0x01,0x0C,0x00]')">
-        <span>OBD QUERY</span><span class="btn-id">OBD → ECU · Broadcast</span>
-      </button>
+  <!-- Center: Motherboard Canvas -->
+  <div class="canvas-area">
+    <canvas id="mb"></canvas>
+  </div>
+
+  <!-- Right sidebar: Signals & Log -->
+  <div class="sidebar right">
+    <div class="section-label">Control Bus Signals</div>
+
+    <div class="signal-row">
+      <span class="signal-name">CLK</span>
+      <div class="signal-wave"><canvas class="sig-canvas" id="sig-clk"></canvas></div>
+      <span class="signal-val" id="val-clk" style="color:var(--accent)">1</span>
     </div>
-    <hr class="separator" style="margin-top:10px">
-    <div class="panel-title" style="margin-top:8px">▸ SCENARIO SEQUENCE</div>
-    <div class="scenario-btns">
-      <button class="scenario-btn" onclick="runScenario('startup')">⬡ Cold Engine Startup Sequence</button>
-      <button class="scenario-btn" onclick="runScenario('brake')">⬡ Emergency Braking / ABS Event</button>
-      <button class="scenario-btn" onclick="runScenario('obd')">⬡ OBD-II Diagnostic Scan</button>
+    <div class="signal-row">
+      <span class="signal-name">RD#</span>
+      <div class="signal-wave"><canvas class="sig-canvas" id="sig-rd"></canvas></div>
+      <span class="signal-val" id="val-rd" style="color:var(--ram-color)">0</span>
+    </div>
+    <div class="signal-row">
+      <span class="signal-name">WR#</span>
+      <div class="signal-wave"><canvas class="sig-canvas" id="sig-wr"></canvas></div>
+      <span class="signal-val" id="val-wr" style="color:var(--ram-color)">0</span>
+    </div>
+    <div class="signal-row">
+      <span class="signal-name">ADDR</span>
+      <div class="signal-wave"><canvas class="sig-canvas" id="sig-addr"></canvas></div>
+      <span class="signal-val" id="val-addr" style="color:var(--io-color)">-</span>
+    </div>
+    <div class="signal-row">
+      <span class="signal-name">DATA</span>
+      <div class="signal-wave"><canvas class="sig-canvas" id="sig-data"></canvas></div>
+      <span class="signal-val" id="val-data" style="color:var(--accent)">-</span>
+    </div>
+    <div class="signal-row">
+      <span class="signal-name">IRQ</span>
+      <div class="signal-wave"><canvas class="sig-canvas" id="sig-irq"></canvas></div>
+      <span class="signal-val" id="val-irq" style="color:var(--gpu-color)">0</span>
+    </div>
+    <div class="signal-row">
+      <span class="signal-name">ACK</span>
+      <div class="signal-wave"><canvas class="sig-canvas" id="sig-ack"></canvas></div>
+      <span class="signal-val" id="val-ack" style="color:var(--accent2)">0</span>
+    </div>
+    <div class="signal-row">
+      <span class="signal-name">DMA</span>
+      <div class="signal-wave"><canvas class="sig-canvas" id="sig-dma"></canvas></div>
+      <span class="signal-val" id="val-dma" style="color:var(--storage-color)">0</span>
+    </div>
+
+    <div class="section-label" style="margin-top:8px">Event Log</div>
+    <div class="log-panel" id="log-panel">
+      <div class="log-entry ctrl"><span class="log-time">0000ns</span><span class="log-type" style="color:var(--accent)">SYS</span>Simulation initialized</div>
     </div>
   </div>
 
-  <!-- ══ RIGHT PANEL BOT: Frame + Log ══ -->
-  <div class="panel-bot">
-    <div class="panel-title">▸ CAN FRAME DECODER</div>
-    <div class="frame-box" id="frame-box">
-      <div class="label">LAST FRAME ON BUS</div>
-      <div class="frame-hex" id="frame-hex">— awaiting transmission —</div>
+  <!-- Bottom controls -->
+  <div class="controls-bar">
+    <div class="ctrl-group">
+      <span class="ctrl-label">Speed</span>
+      <input type="range" id="speed-ctrl" min="1" max="10" value="5" oninput="setSpeed(this.value)">
+      <span style="font-size:10px;color:var(--accent)" id="speed-val">5x</span>
     </div>
-
-    <div class="panel-title" style="margin-top:4px">▸ BUS LOG</div>
-    <div class="scroll-log" id="bus-log">
-      <div class="log-entry"><span class="ts">00:00.000</span>Bus initialized. Nodes online.</div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">Mode</span>
+      <button id="btn-auto" class="active-btn" onclick="setMode('auto')">AUTO</button>
+      <button id="btn-manual" onclick="setMode('manual')">MANUAL</button>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">Bus Load</span>
+      <input type="range" id="load-ctrl" min="0" max="100" value="40" oninput="setBusLoad(this.value)">
+      <span style="font-size:10px;color:var(--accent2)" id="load-val">40%</span>
+    </div>
+    <div class="ctrl-group">
+      <span class="ctrl-label">View</span>
+      <select onchange="setView(this.value)">
+        <option value="all">All Buses</option>
+        <option value="ctrl">Control Bus</option>
+        <option value="data">Data Bus</option>
+        <option value="addr">Address Bus</option>
+      </select>
+    </div>
+    <div style="margin-left:auto;font-size:10px;color:var(--muted)" id="stats-display">
+      TX: 0 MB/s &nbsp;|&nbsp; Latency: 0 ns &nbsp;|&nbsp; Cycles: 0
     </div>
   </div>
-
 </div>
 
-<div id="tooltip"></div>
-
 <script>
-// ─── Node positions on SVG ───
-const nodes = {
-  ecu1: { x: 165, y: 315, busX: 165, name: 'ABS Module' },
-  ecu2: { x: 280, y: 182, busX: 280, name: 'Engine ECU' },
-  ecu3: { x: 350, y: 198, busX: 350, name: 'Body Control Module' },
-  ecu4: { x: 430, y: 182, busX: 430, name: 'Transmission (TCM)' },
-  ecu5: { x: 530, y: 315, busX: 530, name: 'TYRE Pressure (TPMS)' },
-  ecu6: { x: 350, y: 365, busX: 350, name: 'OBD-II Gateway' },
+const canvas = document.getElementById('mb');
+const ctx = canvas.getContext('2d');
+
+// State
+let animFrame, tick = 0, speed = 5, mode = 'auto', busLoad = 40;
+let activePackets = [];
+let selectedComp = 'cpu';
+let viewMode = 'all';
+let cycles = 0, totalBytes = 0;
+let simTime = 0;
+
+// Signal history (for waveform)
+const SIG_LEN = 60;
+const signals = {
+  clk:  { hist: [], cur: 1, color: '#00d4ff' },
+  rd:   { hist: [], cur: 0, color: '#00ff88' },
+  wr:   { hist: [], cur: 0, color: '#00ff88' },
+  addr: { hist: [], cur: 0, color: '#ffd700' },
+  data: { hist: [], cur: 0, color: '#00d4ff' },
+  irq:  { hist: [], cur: 0, color: '#ff6b35' },
+  ack:  { hist: [], cur: 0, color: '#00ff88' },
+  dma:  { hist: [], cur: 0, color: '#c084fc' },
 };
 
-const busY = 251; // mid of H/L lines
-let msgTime = 0;
-let logCount = 0;
-
-function timestamp() {
-  msgTime += Math.floor(Math.random() * 40) + 10;
-  const ms = String(msgTime).padStart(6,'0');
-  return `${ms.slice(0,2)}:${ms.slice(2,4)}.${ms.slice(4)}`;
+for (const k in signals) {
+  for (let i = 0; i < SIG_LEN; i++) signals[k].hist.push(0);
 }
 
-function updateFrameBox(id, data, from, to) {
-  const sof = '<span style="color:rgba(0,180,255,0.5)">0</span>';
-  const idH = `<span class="id-part">${id}</span>`;
-  const rtr = '<span style="opacity:0.4">0</span>';
-  const dlc = `<span class="dlc-part">${data.replace(/\[|\]/g,'').split(',').length}</span>`;
-  const dataH = `<span class="data-part">${data}</span>`;
-  const crc = `<span style="color:rgba(0,180,255,0.4)">0x${Math.floor(Math.random()*65535).toString(16).toUpperCase().padStart(4,'0')}</span>`;
+// Component layout (relative, scaled in draw)
+const comps = {
+  cpu:     { x: .42, y: .32, w: .16, h: .18, label: 'CPU', sub: 'i9-14900K', color: '#00d4ff' },
+  ram0:    { x: .68, y: .10, w: .07, h: .20, label: 'DDR5', sub: 'DIMM A1', color: '#00ff88' },
+  ram1:    { x: .77, y: .10, w: .07, h: .20, label: 'DDR5', sub: 'DIMM A2', color: '#00ff88' },
+  ram2:    { x: .68, y: .35, w: .07, h: .20, label: 'DDR5', sub: 'DIMM B1', color: '#00ff88' },
+  ram3:    { x: .77, y: .35, w: .07, h: .20, label: 'DDR5', sub: 'DIMM B2', color: '#00ff88' },
+  gpu:     { x: .08, y: .55, w: .50, h: .12, label: 'RTX 4090', sub: 'PCIe 5.0 x16', color: '#ff6b35' },
+  storage: { x: .08, y: .72, w: .20, h: .09, label: 'NVMe SSD', sub: 'PCIe 4.0 x4', color: '#c084fc' },
+  pch:     { x: .42, y: .62, w: .14, h: .14, label: 'PCH', sub: 'Z790', color: '#ffd700' },
+  vrm:     { x: .08, y: .10, w: .10, h: .30, label: 'VRM', sub: 'CPU Power', color: '#4a6a80' },
+  bios:    { x: .08, y: .42, w: .10, h: .08, label: 'BIOS', sub: 'UEFI Flash', color: '#4a6a80' },
+};
 
-  document.getElementById('frame-hex').innerHTML =
-    `SOF: ${sof} &nbsp;|&nbsp; ID: ${idH} &nbsp;|&nbsp; RTR: ${rtr}<br>` +
-    `DLC: ${dlc} &nbsp;|&nbsp; DATA: ${dataH}<br>` +
-    `CRC: ${crc} &nbsp;|&nbsp; ACK: <span class="id-part">1</span> &nbsp;|&nbsp; EOF: <span style="opacity:0.4">1111111</span>`;
+// Bus definitions: source comp → dest comp
+const buses = [
+  { from: 'cpu', to: 'ram0', type: 'data', label: 'IMC', width: 3 },
+  { from: 'cpu', to: 'ram1', type: 'data', label: 'IMC', width: 3 },
+  { from: 'cpu', to: 'ram2', type: 'data', label: 'IMC', width: 3 },
+  { from: 'cpu', to: 'ram3', type: 'data', label: 'IMC', width: 3 },
+  { from: 'cpu', to: 'gpu',  type: 'pcie', label: 'PCIe 5.0', width: 4 },
+  { from: 'cpu', to: 'pch',  type: 'ctrl', label: 'DMI 4.0', width: 2 },
+  { from: 'pch', to: 'storage', type: 'pcie', label: 'PCIe 4.0', width: 2 },
+  { from: 'cpu', to: 'vrm', type: 'power', label: '', width: 2 },
+  { from: 'pch', to: 'bios', type: 'ctrl', label: 'SPI', width: 1 },
+];
+
+const BUS_COLORS = {
+  data:  '#00ff88',
+  pcie:  '#fb7185',
+  ctrl:  '#00d4ff',
+  power: '#ffd700',
+  addr:  '#c084fc',
+};
+
+// Packet class
+function getCompCenter(id) {
+  const c = comps[id];
+  if (!c) return null;
+  const W = canvas.width, H = canvas.height;
+  return { x: (c.x + c.w/2)*W, y: (c.y + c.h/2)*H };
 }
 
-function addLog(dir, from, to, id, label) {
-  const log = document.getElementById('bus-log');
-  const ts = timestamp();
-  const entry = document.createElement('div');
-  entry.className = `log-entry ${dir}`;
-  const dirLabel = dir === 'tx'
-    ? `<span class="dir" style="color:var(--green)">TX</span>`
-    : `<span class="dir" style="color:var(--cyan)">RX</span>`;
-  entry.innerHTML = `<span class="ts">${ts}</span>${dirLabel} [${id}] <span style="color:#fff">${label}</span> — ${nodes[from].name} → ${to === 'broadcast' ? 'ALL' : nodes[to].name}`;
-  log.prepend(entry);
-  // keep max 30 entries
-  while (log.children.length > 30) log.removeChild(log.lastChild);
-}
-
-// ─── Animate msg dot along bus ───
-function animateMsgOnBus(fromNode, toNode, onDone) {
-  const svg = document.getElementById('car');
-  const dot = document.getElementById('msg-dot');
-  const fn = nodes[fromNode];
-  const tn = toNode === 'broadcast' ? null : nodes[toNode];
-
-  // Flash stubs
-  flashStub(fromNode);
-  if (tn) setTimeout(() => flashStub(toNode), 260);
-
-  // Highlight bus wires
-  ['bus-h','bus-l'].forEach(id => {
-    const el = document.getElementById(id);
-    el.classList.add('active-bus');
-    setTimeout(() => el.classList.remove('active-bus'), 500);
+function spawnPacket(fromId, toId, busType, size=1) {
+  const f = getCompCenter(fromId);
+  const t = getCompCenter(toId);
+  if (!f || !t) return;
+  activePackets.push({
+    fx: f.x, fy: f.y, tx: t.x, ty: t.y,
+    t: 0, speed: .01 + speed*.003,
+    color: BUS_COLORS[busType] || '#fff',
+    size: 4 + size*2,
+    label: busType.toUpperCase(),
+    busType,
+    fromId, toId,
+    returning: false,
+    alpha: 1,
   });
+  totalBytes += size * 64;
+}
 
-  // Start position: node stub meets bus
-  const startX = fn.busX;
-  const endX   = tn ? tn.busX : 590;
-  const duration = 400 + Math.abs(endX - startX) * 0.3;
+// Resize canvas
+function resize() {
+  canvas.width = canvas.parentElement.clientWidth;
+  canvas.height = canvas.parentElement.clientHeight;
+}
+window.addEventListener('resize', resize);
+resize();
 
-  dot.setAttribute('cx', startX);
-  dot.setAttribute('cy', busY);
-  dot.setAttribute('opacity', '1');
+// Draw component box
+function drawComp(id, glow=false) {
+  const c = comps[id];
+  const W = canvas.width, H = canvas.height;
+  const x = c.x*W, y = c.y*H, w = c.w*W, h = c.h*H;
 
-  const start = performance.now();
-  function step(now) {
-    const t = Math.min((now - start) / duration, 1);
-    const ease = t < 0.5 ? 2*t*t : -1+(4-2*t)*t;
-    dot.setAttribute('cx', startX + (endX - startX) * ease);
-    if (t < 1) requestAnimationFrame(step);
-    else {
-      dot.setAttribute('opacity', '0');
-      if (onDone) onDone();
+  ctx.save();
+  if (glow || id === selectedComp || (id.startsWith('ram') && selectedComp === 'ram')) {
+    ctx.shadowColor = c.color;
+    ctx.shadowBlur = 20;
+  }
+
+  // PCB background texture
+  ctx.fillStyle = '#0b1520';
+  ctx.strokeStyle = c.color;
+  ctx.lineWidth = glow ? 1.5 : .8;
+  roundRect(ctx, x, y, w, h, 4);
+  ctx.fill();
+  ctx.stroke();
+
+  // Inner highlight stripe
+  ctx.fillStyle = c.color + '18';
+  roundRect(ctx, x+1, y+1, w-2, 6, 2);
+  ctx.fill();
+
+  // Label
+  ctx.fillStyle = c.color;
+  ctx.font = `bold ${Math.max(8, w*.09)}px 'Orbitron', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(c.label, x + w/2, y + h/2 - 5);
+
+  ctx.fillStyle = c.color + '99';
+  ctx.font = `${Math.max(7, w*.07)}px 'Share Tech Mono', monospace`;
+  ctx.fillText(c.sub, x + w/2, y + h/2 + 9);
+
+  // Activity bar
+  const load = getLoad(id);
+  ctx.fillStyle = '#1a2a3a';
+  roundRect(ctx, x+4, y+h-8, w-8, 4, 2);
+  ctx.fill();
+  ctx.fillStyle = c.color + 'bb';
+  roundRect(ctx, x+4, y+h-8, (w-8)*load, 4, 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function getLoad(id) {
+  if (id === 'cpu') return parseFloat(document.getElementById('cpu-bar').style.width)/100;
+  if (id.startsWith('ram')) return parseFloat(document.getElementById('ram-bar').style.width)/100;
+  if (id === 'gpu') return parseFloat(document.getElementById('gpu-bar').style.width)/100;
+  if (id === 'storage') return parseFloat(document.getElementById('storage-bar').style.width)/100;
+  if (id === 'pch') return parseFloat(document.getElementById('io-bar').style.width)/100;
+  return .2;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h);
+  ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y+r);
+  ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+// Draw static bus lines
+function drawBus(bus) {
+  const show = viewMode === 'all' ||
+    (viewMode === 'ctrl' && bus.type === 'ctrl') ||
+    (viewMode === 'data' && (bus.type === 'data' || bus.type === 'pcie')) ||
+    (viewMode === 'addr' && bus.type === 'addr');
+  if (!show) return;
+
+  const f = getCompCenter(bus.from);
+  const t = getCompCenter(bus.to);
+  if (!f || !t) return;
+
+  ctx.save();
+  ctx.strokeStyle = BUS_COLORS[bus.type] + '40';
+  ctx.lineWidth = bus.width * .8;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(f.x, f.y);
+  // route with elbow
+  const mx = (f.x + t.x)/2;
+  ctx.lineTo(mx, f.y);
+  ctx.lineTo(mx, t.y);
+  ctx.lineTo(t.x, t.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Draw PCB grid
+function drawGrid() {
+  const W = canvas.width, H = canvas.height;
+  ctx.save();
+  ctx.strokeStyle = '#0f1e2c';
+  ctx.lineWidth = .5;
+  const step = 20;
+  for (let x = 0; x < W; x += step) {
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += step) {
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Draw fiducial markers
+function drawFiducials() {
+  const W = canvas.width, H = canvas.height;
+  const pos = [[20,20],[W-20,20],[20,H-20],[W-20,H-20]];
+  ctx.save();
+  ctx.strokeStyle = '#1e3040';
+  ctx.lineWidth = 1;
+  for (const [x,y] of pos) {
+    ctx.beginPath(); ctx.arc(x,y,8,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2);
+    ctx.fillStyle = '#1e3040'; ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Draw moving packet
+function drawPacket(p) {
+  const px = p.fx + (p.tx - p.fx)*p.t;
+  const py = p.fy + (p.ty - p.fy)*p.t;
+
+  ctx.save();
+  ctx.globalAlpha = p.alpha;
+
+  // Glow
+  ctx.shadowColor = p.color;
+  ctx.shadowBlur = 12;
+
+  // Trail
+  const trail = 8;
+  for (let i = trail; i >= 0; i--) {
+    const bt = Math.max(0, p.t - i*.015);
+    const bx = p.fx + (p.tx - p.fx)*bt;
+    const by = p.fy + (p.ty - p.fy)*bt;
+    ctx.globalAlpha = p.alpha * (1 - i/trail) * .4;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(bx, by, p.size*.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Main dot
+  ctx.globalAlpha = p.alpha;
+  ctx.fillStyle = p.color;
+  ctx.beginPath();
+  ctx.arc(px, py, p.size, 0, Math.PI*2);
+  ctx.fill();
+
+  // Label
+  ctx.fillStyle = '#fff';
+  ctx.font = '8px Share Tech Mono, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowBlur = 0;
+  ctx.fillText(p.label, px, py);
+
+  ctx.restore();
+}
+
+// Main draw loop
+function draw() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  drawGrid();
+  drawFiducials();
+
+  // Board outline
+  ctx.save();
+  ctx.strokeStyle = '#1e3040';
+  ctx.lineWidth = 2;
+  roundRect(ctx, 4, 4, W-8, H-8, 8);
+  ctx.stroke();
+  ctx.restore();
+
+  // Buses
+  for (const b of buses) drawBus(b);
+
+  // Components
+  for (const id in comps) drawComp(id);
+
+  // Packets
+  for (const p of activePackets) drawPacket(p);
+
+  // Info overlay: selected comp
+  const sc = comps[selectedComp] || comps['cpu'];
+  ctx.save();
+  ctx.fillStyle = '#00d4ff22';
+  ctx.strokeStyle = '#00d4ff44';
+  ctx.lineWidth = 1;
+  const sx = sc.x*W - 4, sy = sc.y*H - 4, sw = sc.w*W+8, sh = sc.h*H+8;
+  roundRect(ctx, sx, sy, sw, sh, 6);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Update simulation
+let autoTimer = 0;
+function update() {
+  tick++;
+  simTime += 1000 / 60;
+  cycles++;
+
+  // Clock signal
+  const clkState = Math.floor(tick / 2) % 2;
+  signals.clk.cur = clkState;
+
+  // Auto mode: random operations
+  autoTimer -= speed;
+  if (mode === 'auto' && autoTimer <= 0) {
+    autoTimer = Math.max(5, 50 - busLoad/3);
+    autoTrigger();
+  }
+
+  // Update packets
+  for (const p of activePackets) {
+    p.t += p.speed * (speed / 5);
+    if (p.t >= 1) {
+      if (!p.returning) {
+        // Send ACK back
+        if (p.busType !== 'power') {
+          p.returning = true;
+          p.t = 0;
+          [p.fx, p.fy, p.tx, p.ty] = [p.tx, p.ty, p.fx, p.fy];
+          p.color = '#00ff8888';
+          p.size = 3;
+          p.label = 'ACK';
+          signals.ack.cur = 1;
+          setTimeout(() => { signals.ack.cur = 0; }, 150);
+        } else {
+          p.alpha -= .1;
+        }
+      } else {
+        p.alpha -= .15;
+      }
     }
   }
-  requestAnimationFrame(step);
+  activePackets = activePackets.filter(p => p.alpha > 0);
+
+  // Push signal history
+  for (const k in signals) {
+    signals[k].hist.push(signals[k].cur);
+    if (signals[k].hist.length > SIG_LEN) signals[k].hist.shift();
+  }
+
+  // Update signal displays
+  updateSignalDisplays();
+
+  // Fluctuate loads
+  if (tick % 30 === 0) fluctuateLoads();
+
+  // Update stats
+  if (tick % 60 === 0) {
+    const mbps = Math.round(totalBytes / 1024 / 1024 * 60);
+    const lat = Math.round(4 + Math.random()*8);
+    document.getElementById('stats-display').textContent =
+      `TX: ${mbps} MB/s  |  Latency: ${lat} ns  |  Cycles: ${cycles}`;
+    totalBytes = 0;
+  }
 }
 
-function flashStub(ecuId) {
-  const stub = document.getElementById(`stub-${ecuId}`);
-  const node = document.getElementById(`node-${ecuId}`);
-  if (!stub) return;
-  stub.style.stroke = '#00ffe7';
-  stub.style.strokeWidth = '2.5';
-  if (node) node.classList.add('firing');
-  setTimeout(() => {
-    stub.style.stroke = '';
-    stub.style.strokeWidth = '';
-    if (node) node.classList.remove('firing');
-  }, 500);
+function autoTrigger() {
+  const ops = ['read','write','dma','pcie','irq'];
+  const weights = [40,30,10,15,5];
+  let r = Math.random()*100, cum=0, chosen='read';
+  for (let i=0;i<ops.length;i++) { cum+=weights[i]; if(r<cum){chosen=ops[i];break;} }
+  if (busLoad > 60) triggerOp(chosen);
+  else if (Math.random()*100 < busLoad) triggerOp(chosen);
 }
 
-function sendMsg(from, to, label, id, data, silent) {
-  // Visual button flash
-  const btns = document.querySelectorAll('.ecu-btn');
-  btns.forEach(b => {
-    if (b.textContent.includes(label.replace('_',' '))) b.classList.add('firing');
-    setTimeout(() => b.classList.remove('firing'), 500);
-  });
+function triggerOp(op) {
+  const ts = Math.round(simTime).toString().padStart(6,'0') + 'ns';
+  let logClass='ctrl', logType='', logMsg='';
 
-  updateFrameBox(id, data, from, to);
-  if (!silent) addLog('tx', from, to, id, label);
-
-  animateMsgOnBus(from, to, () => {
-    if (!silent) addLog('rx', from, to, id, label);
-  });
+  switch(op) {
+    case 'read':
+      spawnPacket('cpu','ram0','data',2);
+      spawnPacket('cpu','ram1','data',1);
+      signals.rd.cur = 1; signals.addr.cur = 1;
+      setTimeout(() => { signals.rd.cur = 0; signals.addr.cur = 0; }, 200);
+      logClass='data'; logType='RD'; logMsg='Memory read → 0x'+Math.floor(Math.random()*0xFFFF).toString(16).toUpperCase().padStart(4,'0');
+      addLog(ts, logType, logMsg, logClass);
+      break;
+    case 'write':
+      spawnPacket('cpu','ram2','data',2);
+      spawnPacket('cpu','ram3','data',2);
+      signals.wr.cur = 1; signals.data.cur = 1; signals.addr.cur = 1;
+      setTimeout(() => { signals.wr.cur = 0; signals.data.cur = 0; signals.addr.cur = 0; }, 200);
+      logClass='data'; logType='WR'; logMsg='Memory write → 0x'+Math.floor(Math.random()*0xFFFF).toString(16).toUpperCase().padStart(4,'0');
+      addLog(ts, logType, logMsg, logClass);
+      break;
+    case 'dma':
+      spawnPacket('storage','ram0','pcie',4);
+      spawnPacket('storage','ram1','pcie',4);
+      signals.dma.cur = 1;
+      setTimeout(() => { signals.dma.cur = 0; }, 400);
+      logClass='ctrl'; logType='DMA'; logMsg='DMA burst · 256KB NVMe→RAM';
+      addLog(ts, logType, logMsg, logClass);
+      break;
+    case 'irq':
+      spawnPacket('pch','cpu','ctrl',1);
+      signals.irq.cur = 1;
+      setTimeout(() => { signals.irq.cur = 0; }, 100);
+      logClass='irq'; logType='IRQ'; logMsg='Interrupt request #'+Math.floor(Math.random()*16)+' asserted';
+      addLog(ts, logType, logMsg, 'irq');
+      break;
+    case 'pcie':
+      spawnPacket('cpu','gpu','pcie',8);
+      spawnPacket('gpu','ram0','pcie',4);
+      logClass='ctrl'; logType='PCIe'; logMsg='PCIe burst · render cmd → GPU';
+      addLog(ts, logType, logMsg, logClass);
+      break;
+  }
 }
 
-// ─── Scenarios ───
-const scenarios = {
-  startup: [
-    [0,    'ecu2', 'ecu3', 'ECU_INIT',    '0x28', '[0x01,0x00]'],
-    [500,  'ecu4', 'ecu3', 'TCM_READY',   '0x2A', '[0x01]'],
-    [900,  'ecu1', 'ecu3', 'ABS_READY',   '0x18', '[0x01,0x00]'],
-    [1300, 'ecu5', 'ecu3', 'TPMS_OK',     '0x3F', '[0x1C,0x1C,0x1D,0x1C]'],
-    [1700, 'ecu3', 'ecu2', 'START_ENGINE','0x35', '[0x05,0x01]'],
-    [2200, 'ecu2', 'ecu3', 'RPM_IDLE',    '0x28', '[0x03,0x20,0x00]'],
-  ],
-  brake: [
-    [0,    'ecu1', 'ecu3', 'BRAKE_HARD',  '0x18', '[0xFF,0xFF]'],
-    [300,  'ecu1', 'ecu3', 'ABS_ACTIVE',  '0x18', '[0xFF,0x01]'],
-    [600,  'ecu4', 'ecu3', 'TCM_DOWNSHIFT','0x2A','[0x02,0x00]'],
-    [900,  'ecu2', 'ecu3', 'ENGINE_BRAKE','0x28', '[0x00,0x50]'],
-    [1400, 'ecu1', 'ecu3', 'ABS_RELEASE', '0x18', '[0x00,0x00]'],
-  ],
-  obd: [
-    [0,    'ecu6', 'ecu2', 'OBD_QUERY_RPM', '0x7DF', '[0x02,0x01,0x0C]'],
-    [400,  'ecu2', 'ecu6', 'OBD_RESP_RPM',  '0x7E8', '[0x04,0x41,0x0C,0x1A,0xF8]'],
-    [800,  'ecu6', 'ecu2', 'OBD_QUERY_SPEED','0x7DF','[0x02,0x01,0x0D]'],
-    [1200, 'ecu2', 'ecu6', 'OBD_RESP_SPEED','0x7E8', '[0x03,0x41,0x0D,0x60]'],
-    [1600, 'ecu6', 'ecu2', 'OBD_QUERY_TEMP','0x7DF','[0x02,0x01,0x05]'],
-    [2000, 'ecu2', 'ecu6', 'OBD_RESP_TEMP', '0x7E8', '[0x03,0x41,0x05,0x7B]'],
-  ],
-};
-
-function runScenario(name) {
-  const steps = scenarios[name];
-  steps.forEach(([delay, from, to, label, id, data]) => {
-    setTimeout(() => sendMsg(from, to, label, id, data), delay);
-  });
+function addLog(ts, type, msg, cls) {
+  const panel = document.getElementById('log-panel');
+  const el = document.createElement('div');
+  el.className = 'log-entry ' + cls;
+  const colors = { ctrl:'#00d4ff', data:'#00ff88', addr:'#ffd700', irq:'#ff6b35' };
+  el.innerHTML = `<span class="log-time">${ts}</span><span class="log-type" style="color:${colors[cls]||'#fff'}">[${type}]</span>${msg}`;
+  panel.insertBefore(el, panel.firstChild);
+  while (panel.children.length > 30) panel.removeChild(panel.lastChild);
 }
 
-// ─── Node tooltips ───
-const tooltipData = {
-  ecu1: 'ABS MODULE\nID: 0x18\nMonitors wheel speed, activates anti-lock braking. Broadcasts on emergency.',
-  ecu2: 'ENGINE ECU\nID: 0x28\nControls fuel injection, ignition timing, RPM. Master node for powertrain.',
-  ecu3: 'BODY CTRL MODULE\nID: 0x35\nCentral gateway. Manages lighting, doors, climate, dashboard display.',
-  ecu4: 'TRANSMISSION (TCM)\nID: 0x2A\nControls automatic gear shifts. Coordinates with ECU for torque.',
-  ecu5: 'TYRE PRESSURE (TPMS)\nID: 0x3F\nMonitors PSI on all 4 wheels. Triggers BCM warning on low pressure.',
-  ecu6: 'OBD-II GATEWAY\nID: 0x7DF\nDiagnostic interface. Broadcasts query frames, receives 0x7E8 responses.',
-};
+// Signal waveform canvases
+function drawSignalWave(id, hist, color) {
+  const c = document.getElementById('sig-'+id);
+  if (!c) return;
+  const W = c.width = c.parentElement.clientWidth;
+  const H = c.height = c.parentElement.clientHeight;
+  const gctx = c.getContext('2d');
+  gctx.clearRect(0,0,W,H);
+  gctx.strokeStyle = color;
+  gctx.lineWidth = 1.5;
+  gctx.beginPath();
+  const step = W / SIG_LEN;
+  for (let i = 0; i < hist.length; i++) {
+    const x = i * step;
+    const y = hist[i] > 0 ? 2 : H-2;
+    if (i===0) gctx.moveTo(x, y);
+    else {
+      if (hist[i] !== hist[i-1]) {
+        gctx.lineTo(x, hist[i-1] > 0 ? 2 : H-2);
+        gctx.lineTo(x, y);
+      } else gctx.lineTo(x, y);
+    }
+  }
+  gctx.stroke();
+}
 
-const tip = document.getElementById('tooltip');
-document.querySelectorAll('.ecu-node').forEach(n => {
-  n.addEventListener('mouseenter', e => {
-    const id = n.getAttribute('data-ecu');
-    tip.innerHTML = tooltipData[id].replace(/\n/g,'<br>');
-    tip.classList.add('show');
-  });
-  n.addEventListener('mousemove', e => {
-    tip.style.left = (e.clientX + 14) + 'px';
-    tip.style.top  = (e.clientY - 10) + 'px';
-  });
-  n.addEventListener('mouseleave', () => tip.classList.remove('show'));
-  n.addEventListener('click', e => {
-    const id = n.getAttribute('data-ecu');
-    // clicking a node fires a heartbeat message to BCM
-    const dest = id === 'ecu3' ? 'ecu2' : 'ecu3';
-    sendMsg(id, dest, 'HEARTBEAT', '0x' + Math.floor(Math.random()*255).toString(16).toUpperCase(), '[0x01]');
-  });
-});
+function updateSignalDisplays() {
+  const map = [
+    ['clk','clk'], ['rd','rd'], ['wr','wr'],
+    ['addr','addr'], ['data','data'], ['irq','irq'],
+    ['ack','ack'], ['dma','dma'],
+  ];
+  for (const [k, id] of map) {
+    const s = signals[k];
+    drawSignalWave(id, s.hist, s.color);
+    const v = document.getElementById('val-'+id);
+    if (v) v.textContent = s.cur ? '1' : '0';
+  }
+}
 
-// Autorun a slow heartbeat loop to show bus is alive
-let hbIdx = 0;
-const hbNodes = ['ecu2','ecu4','ecu1','ecu5'];
-setInterval(() => {
-  const n = hbNodes[hbIdx++ % hbNodes.length];
-  animateMsgOnBus(n, 'ecu3', null);
-}, 3000);
+function fluctuateLoads() {
+  function fl(id, min, max) {
+    const el = document.getElementById(id);
+    const cur = parseFloat(el.style.width);
+    const delta = (Math.random()-.4)*8;
+    el.style.width = Math.max(min, Math.min(max, cur+delta)) + '%';
+  }
+  fl('cpu-bar', 20, 95);
+  fl('ram-bar', 20, 80);
+  fl('gpu-bar', 5, 60);
+  fl('storage-bar', 5, 40);
+  fl('io-bar', 15, 60);
+
+  // Update status text
+  const cpuLoad = parseFloat(document.getElementById('cpu-bar').style.width);
+  document.getElementById('cpu-status').textContent = cpuLoad > 80 ? 'PEAK LOAD' : cpuLoad > 50 ? 'RUNNING' : 'ACTIVE';
+  const gpuLoad = parseFloat(document.getElementById('gpu-bar').style.width);
+  document.getElementById('gpu-status').textContent = gpuLoad > 40 ? 'COMPUTING' : 'IDLE';
+  document.getElementById('storage-status').textContent = signals.dma.cur ? 'DMA XFER' : 'STANDBY';
+}
+
+function setSpeed(v) {
+  speed = +v;
+  document.getElementById('speed-val').textContent = v + 'x';
+}
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('btn-auto').classList.toggle('active-btn', m==='auto');
+  document.getElementById('btn-manual').classList.toggle('active-btn', m==='manual');
+}
+
+function setBusLoad(v) {
+  busLoad = +v;
+  document.getElementById('load-val').textContent = v + '%';
+}
+
+function setView(v) { viewMode = v; }
+
+function selectComponent(c) {
+  selectedComp = c;
+  document.querySelectorAll('.component-card').forEach(el => el.classList.remove('active'));
+  const card = document.getElementById('card-'+c);
+  if (card) card.classList.add('active');
+}
+
+// Main loop
+function loop() {
+  update();
+  draw();
+  animFrame = requestAnimationFrame(loop);
+}
+loop();
 </script>
 </body>
 </html>
